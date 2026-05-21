@@ -1,0 +1,17 @@
+{
+  "camera": {
+    "device_index": 0,
+    "width": 640,
+    "height": 480
+  },
+  "optimizations": {
+    "target_fps": 5,
+    "gating_mouse_keyboard": true,
+    "inactivity_trigger_seconds": 10
+  },
+  "security": {
+    "tolerance_seconds": 3,
+    "reference_image_path": "data/reference/owner.jpg",
+    "face_distance_threshold": 0.6
+  }
+}
