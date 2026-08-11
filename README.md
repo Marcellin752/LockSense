@@ -22,7 +22,7 @@ By continuously analyzing the webcam feed, your machine becomes "aware" of your 
 - **Key Libraries:**
   - `OpenCV`: Handles the webcam video stream capture and downsampling optimizations.
   - `MediaPipe` (Face Detection): Highly optimized first-level filtering to detect a human face with minimal CPU impact.
-  - `Face Recognition` (dlib): Extracts facial landmarks and performs continuous biometric verification against the authorized profile.
+  - `Face Recognition` (In progress): Extracts facial landmarks and performs continuous biometric verification against the authorized profile.
 
 ##  Pipeline Architecture
 
@@ -46,13 +46,15 @@ sudo apt-get install cmake build-essential libgtk-3-dev libboost-python-dev
 ### Clone the repository:
 
 ```bash
-git clone [https://github.com/your-username/lock-sense.git](https://github.com/your-username/lock-sense.git)
-cd lock-sense
+git clone git@github.com:Marcellin752/LockSense.git
+cd LockSense
 ```
 
 ### Install the required dependencies:
 
 ```bash
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
@@ -64,7 +66,7 @@ python3 src/main.py
 
 ## Current Challenges & Optimizations
 
-The project is currently focusing on reducing its CPU footprint. Real-time image processing is computationally expensive.
+The project is currently focusing on reducing its CPU footprint and optimising the Face Recognision sytem. Real-time image processing is computationally expensive.
 
 👤 Author
 
