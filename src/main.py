@@ -31,6 +31,7 @@ class LockSenseApp:
         self.tolerance_seconds = 3
         self.last_seen_time = time.time()
         self.is_locked = False
+        self.locked_at = 0.0
 
         # Keyboard/mouse gating (anti-false-positive) settings
         self.gating_mouse_keyboard = True
@@ -65,6 +66,11 @@ class LockSenseApp:
         if not self.auth.load_reference_profile():
             print("[Critical] Owner profile unavailable: LockSense cannot authenticate users.")
             return
+
+        # Re-arm the absence timer NOW: camera startup and model loading above
+        # took several seconds and must not count as an absence (otherwise
+        # LockSense would lock the session instantly on launch).
+        self.last_seen_time = time.time()
 
         try:
             while True:
@@ -123,6 +129,13 @@ class LockSenseApp:
                 if absence_duration >= self.tolerance_seconds and not self.is_locked:
                     self.trigger.lock_session()
                     self.is_locked = True
+                    self.locked_at = current_time
+
+                # Re-arm the lock trigger after a cooldown: if the user manually
+                # unlocks the session while still away (or hidden from the camera),
+                # protection must resume instead of staying disabled forever.
+                if self.is_locked and current_time - self.locked_at >= self.tolerance_seconds:
+                    self.is_locked = False
 
                 #  Render security HUD overlay on monitor window
                 cv2.putText(frame, status_text, (20, 40),
