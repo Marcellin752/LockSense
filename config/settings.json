@@ -11,7 +11,7 @@
   },
   "security": {
     "tolerance_seconds": 3,
-    "reference_image_path": "data/reference/owner.jpg",
+    "reference_image_path": "data/reference/owner.jpeg",
     "face_distance_threshold": 0.6
   }
 }
