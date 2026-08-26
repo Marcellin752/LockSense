@@ -92,9 +92,15 @@ class FaceAuthenticator:
 
         return owner_present, strangers
 
-    def authenticate(self, frame):
+    # Low-res webcam frames (640x480) produce tiny faces that dlib fails to
+    # match: magnifying the face crops before encoding fixes reliability.
+    UPSCALE_FACTOR = 2.0
+
+    def authenticate(self, frame, face_boxes=None):
         """
         Runs a full biometric analysis of every visible face in the frame.
+        When MediaPipe bounding boxes are provided they are reused directly,
+        skipping the costly dlib face detector entirely.
         Returns:
             bool: True if the authorized owner is recognized.
             int: Number of stranger faces detected.
@@ -104,16 +110,32 @@ class FaceAuthenticator:
 
         # face_recognition expects RGB while OpenCV provides BGR
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        face_encodings = face_recognition.face_encodings(rgb_frame)
+
+        known_locations = None
+        if face_boxes:
+            rgb_frame = cv2.resize(
+                rgb_frame, None, fx=self.UPSCALE_FACTOR, fy=self.UPSCALE_FACTOR)
+            known_locations = [
+                (int(left * self.UPSCALE_FACTOR), int(top * self.UPSCALE_FACTOR),
+                 int(right * self.UPSCALE_FACTOR), int(bottom * self.UPSCALE_FACTOR))
+                for left, top, right, bottom in face_boxes
+            ]
+
+        if known_locations:
+            face_encodings = face_recognition.face_encodings(
+                rgb_frame, known_face_locations=known_locations)
+        else:
+            face_encodings = face_recognition.face_encodings(rgb_frame)
 
         return self.classify_faces(
             face_encodings, self.reference_encoding, self.distance_threshold)
 
-    def verify(self, frame):
+    def verify(self, frame, face_boxes=None, force=False):
         """
         Throttled authentication: runs the expensive recognition only once
         every 'check_interval' calls and serves the cached verdict in between.
         MediaPipe face detection still runs on every frame as a fast gate.
+        A 'force' call bypasses the cache (used when a face just reappeared).
         Returns:
             bool: True if the authorized owner is recognized.
             int: Number of stranger faces detected.
@@ -121,9 +143,9 @@ class FaceAuthenticator:
         if self.reference_encoding is None:
             return False, 0
 
-        if self._frames_since_check == 0 or \
+        if force or self._frames_since_check == 0 or \
                 self._frames_since_check >= self.check_interval:
-            self._cached_result = self.authenticate(frame)
+            self._cached_result = self.authenticate(frame, face_boxes)
             self._frames_since_check = 1
         else:
             self._frames_since_check += 1

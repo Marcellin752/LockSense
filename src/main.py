@@ -17,6 +17,14 @@ from security.os_trigger import OSTrigger
 from security.input_monitor import InputActivityMonitor
 
 class LockSenseApp:
+    # Minimum delay between two lock commands, so an already-locked session
+    # is never spammed with system calls (a known desktop-freeze trigger).
+    LOCK_RETRY_COOLDOWN = 15.0
+
+    # While the session stays locked, video analysis drops to one light
+    # check every IDLE_CHECK_INTERVAL seconds to keep CPU usage near zero.
+    IDLE_CHECK_INTERVAL = 2.0
+
     def __init__(self, config_path="config/settings.json"):
         self.config_path = config_path
 
@@ -28,14 +36,18 @@ class LockSenseApp:
         self.input_monitor = InputActivityMonitor()
 
         # Security tracking states
-        self.tolerance_seconds = 3
+        self.tolerance_seconds = 5
         self.last_seen_time = time.time()
         self.is_locked = False
         self.locked_at = 0.0
+        self.last_lock_attempt = 0.0
+        self.last_locked_check = 0.0
+        self.last_face_detected = False
 
         # Keyboard/mouse gating (anti-false-positive) settings
         self.gating_mouse_keyboard = True
         self.inactivity_trigger_seconds = 10
+        self.draw_face_mesh = False
 
         self.load_config()
 
@@ -47,11 +59,13 @@ class LockSenseApp:
                     config = json.load(f)
                     security = config.get("security", {})
                     optimizations = config.get("optimizations", {})
-                    self.tolerance_seconds = security.get("tolerance_seconds", 3)
+                    self.tolerance_seconds = security.get("tolerance_seconds", 5)
                     self.gating_mouse_keyboard = optimizations.get(
                         "gating_mouse_keyboard", True)
                     self.inactivity_trigger_seconds = optimizations.get(
                         "inactivity_trigger_seconds", 10)
+                    self.draw_face_mesh = optimizations.get(
+                        "draw_face_mesh", False)
             except Exception as e:
                 print(f"[Warning] Failed to load config in Main. Error: {e}")
 
@@ -82,16 +96,36 @@ class LockSenseApp:
 
                 current_time = time.time()
 
-                # Run lightweight MediaPipe face detection
-                face_detected, frame = self.detector.detect_face(frame, draw_mesh=True)
+                # Idle mode: while the session is locked, skip the heavy video
+                # pipeline except one light check every IDLE_CHECK_INTERVAL.
+                # This keeps CPU usage near zero and prevents desktop freezes.
+                if self.is_locked and \
+                        current_time - self.last_locked_check < self.IDLE_CHECK_INTERVAL:
+                    if cv2.waitKey(1) & 0xFF == ord('q'):
+                        print("[LockSense] Manual exit triggered by user.")
+                        break
+                    time.sleep(0.2)
+                    continue
+                if self.is_locked:
+                    self.last_locked_check = current_time
+
+                # Run lightweight MediaPipe face detection (mesh drawing is
+                # optional: tessellation rendering costs CPU on every frame)
+                face_detected, face_boxes, frame = self.detector.detect_face(
+                    frame, draw_mesh=self.draw_face_mesh)
 
                 # Secure presence requires the OWNER to be recognized,
                 # a bare face or an intruder is treated as an absence.
-                # Recognition is throttled internally to spare CPU cycles.
+                # Recognition is throttled internally to spare CPU cycles,
+                # but forced fresh as soon as a face reappears so a returning
+                # user never inherits a stale 'away' verdict.
                 owner_present = False
                 strangers = 0
                 if face_detected:
-                    owner_present, strangers = self.auth.verify(frame)
+                    force_check = not self.last_face_detected
+                    owner_present, strangers = self.auth.verify(
+                        frame, face_boxes, force=force_check)
+                self.last_face_detected = face_detected
 
                 # Anti-false-positive gate: recent keyboard/mouse activity
                 # proves the legitimate user is still working even when their
@@ -124,17 +158,23 @@ class LockSenseApp:
                     status_text = f"USER AWAY - LOCKING IN {remaining_time}s"
                     color = (0, 0, 255)  # Red
 
-                # Trigger locking condition if tolerance threshold is breached
+                # Trigger locking condition if tolerance threshold is breached,
+                # respecting the retry cooldown to avoid hammering the desktop
                 absence_duration = current_time - self.last_seen_time
-                if absence_duration >= self.tolerance_seconds and not self.is_locked:
+                if absence_duration >= self.tolerance_seconds and \
+                        not self.is_locked and \
+                        current_time - self.last_lock_attempt >= self.LOCK_RETRY_COOLDOWN:
                     self.trigger.lock_session()
                     self.is_locked = True
                     self.locked_at = current_time
+                    self.last_lock_attempt = current_time
 
-                # Re-arm the lock trigger after a cooldown: if the user manually
-                # unlocks the session while still away (or hidden from the camera),
+                # Re-arm the lock trigger: if the user manually unlocks the
+                # session while still away (or hidden from the camera),
                 # protection must resume instead of staying disabled forever.
-                if self.is_locked and current_time - self.locked_at >= self.tolerance_seconds:
+                # The retry cooldown above caps how often commands are sent.
+                if self.is_locked and \
+                        current_time - self.locked_at >= self.tolerance_seconds:
                     self.is_locked = False
 
                 #  Render security HUD overlay on monitor window

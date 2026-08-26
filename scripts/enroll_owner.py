@@ -38,7 +38,7 @@ def main():
             if not success:
                 continue
 
-            face_detected, frame = detector.detect_face(frame, draw_mesh=False)
+            face_detected, face_boxes, frame = detector.detect_face(frame, draw_mesh=False)
 
             if face_detected:
                 hint, color = "PRESS SPACE TO SAVE", (0, 255, 0)

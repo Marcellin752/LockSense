@@ -7,12 +7,13 @@
   "optimizations": {
     "target_fps": 5,
     "auth_check_interval": 5,
+    "draw_face_mesh": false,
     "gating_mouse_keyboard": true,
     "inactivity_trigger_seconds": 10
   },
   "security": {
-    "tolerance_seconds": 3,
+    "tolerance_seconds": 5,
     "reference_image_path": "data/reference/owner.jpeg",
-    "face_distance_threshold": 0.6
+    "face_distance_threshold": 0.75
   }
 }
