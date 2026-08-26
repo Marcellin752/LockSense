@@ -64,6 +64,16 @@ pip install -r requirements.txt
 python3 src/main.py
 ```
 
+## Enroll the owner profile:
+
+Before the first run, capture your reference photo (used for biometric verification):
+
+```bash
+python3 scripts/enroll_owner.py
+```
+
+Position yourself in front of the webcam, then press `SPACE` to save (`Q` to cancel). The photo is stored locally in `data/reference/` and never leaves your machine.
+
 ## Current Challenges & Optimizations
 
 The project is currently focusing on reducing its CPU footprint and optimising the Face Recognision sytem. Real-time image processing is computationally expensive.
