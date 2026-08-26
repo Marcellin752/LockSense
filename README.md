@@ -68,6 +68,6 @@ python3 src/main.py
 
 The project is currently focusing on reducing its CPU footprint and optimising the Face Recognision sytem. Real-time image processing is computationally expensive.
 
-👤 Author
+Author
 
 [Marcellin SAMBIENI](https://github.com/Marcellin752) - Epitech Student
