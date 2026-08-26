@@ -14,6 +14,7 @@ from capture.camera import CameraManager
 from detection.face_detector import FaceDetector
 from auth.face_auth import FaceAuthenticator
 from security.os_trigger import OSTrigger
+from security.input_monitor import InputActivityMonitor
 
 class LockSenseApp:
     def __init__(self, config_path="config/settings.json"):
@@ -24,12 +25,17 @@ class LockSenseApp:
         self.detector = FaceDetector(self.config_path)
         self.auth = FaceAuthenticator(self.config_path)
         self.trigger = OSTrigger()
-        
+        self.input_monitor = InputActivityMonitor()
+
         # Security tracking states
         self.tolerance_seconds = 3
         self.last_seen_time = time.time()
         self.is_locked = False
-        
+
+        # Keyboard/mouse gating (anti-false-positive) settings
+        self.gating_mouse_keyboard = True
+        self.inactivity_trigger_seconds = 10
+
         self.load_config()
 
     def load_config(self):
@@ -38,7 +44,13 @@ class LockSenseApp:
             try:
                 with open(self.config_path, 'r') as f:
                     config = json.load(f)
-                    self.tolerance_seconds = config.get("security", {}).get("tolerance_seconds", 3)
+                    security = config.get("security", {})
+                    optimizations = config.get("optimizations", {})
+                    self.tolerance_seconds = security.get("tolerance_seconds", 3)
+                    self.gating_mouse_keyboard = optimizations.get(
+                        "gating_mouse_keyboard", True)
+                    self.inactivity_trigger_seconds = optimizations.get(
+                        "inactivity_trigger_seconds", 10)
             except Exception as e:
                 print(f"[Warning] Failed to load config in Main. Error: {e}")
 
@@ -71,17 +83,30 @@ class LockSenseApp:
                 # a bare face or an intruder is treated as an absence.
                 # Recognition is throttled internally to spare CPU cycles.
                 owner_present = False
+                strangers = 0
                 if face_detected:
-                    owner_present, distance = self.auth.verify(frame)
+                    owner_present, strangers = self.auth.verify(frame)
 
-                if owner_present:
+                # Anti-false-positive gate: recent keyboard/mouse activity
+                # proves the legitimate user is still working even when their
+                # face goes undetected. Never applies while a stranger is seen.
+                input_active = False
+                if self.gating_mouse_keyboard and not owner_present and strangers == 0:
+                    idle_seconds = self.input_monitor.get_idle_seconds()
+                    input_active = (idle_seconds is not None
+                                    and idle_seconds < self.inactivity_trigger_seconds)
+
+                secure_presence = owner_present or input_active
+
+                if secure_presence:
                     # Authorized user in front of the screen: reset security timers
                     self.last_seen_time = current_time
                     self.is_locked = False  # Reset lock state when user returns
-                    status_text = "USER PROTECTED"
+                    status_text = ("USER PROTECTED" if owner_present
+                                   else "USER ACTIVE (INPUT GATE)")
                     color = (0, 255, 0)  # Green
-                elif face_detected:
-                    # A face is visible but it is NOT the owner: immediate threat
+                elif strangers > 0:
+                    # Unrecognized face(s) visible: immediate threat
                     absence_duration = current_time - self.last_seen_time
                     remaining_time = max(0, int(self.tolerance_seconds - absence_duration))
                     status_text = f"INTRUDER DETECTED - LOCKING IN {remaining_time}s"

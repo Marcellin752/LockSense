@@ -24,9 +24,10 @@ class FaceDetector:
         self.load_config()
         
         # Setup the MediaPipe Face Mesh model
+        # Multiple faces are tracked so that an intruder next to the owner is seen
         self.face_mesh = self.mp_face_mesh.FaceMesh(
             static_image_mode=False,
-            max_num_faces=1,
+            max_num_faces=5,
             refine_landmarks=True,
             min_detection_confidence=0.5
         )

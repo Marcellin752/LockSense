@@ -20,11 +20,10 @@ class FaceAuthenticator:
         self.reference_image_path = "data/reference/owner.jpeg"
         self.distance_threshold = 0.6
 
-        # Performance throttling state
+        # Performance throttling state (full check on first verify call)
         self.check_interval = 5
         self._frames_since_check = 0
-        self._cached_result = False
-        self._cached_distance = 1.0
+        self._cached_result = (False, 0)
 
         self.load_config()
 
@@ -69,26 +68,46 @@ class FaceAuthenticator:
         print(f"[LockSense] Owner profile loaded from '{self.reference_image_path}'.")
         return True
 
+    @staticmethod
+    def classify_faces(face_encodings, reference_encoding, distance_threshold):
+        """
+        Pure decision helper: classifies every detected face against the owner profile.
+        Returns:
+            bool: True if the authorized owner is among the faces.
+            int: Number of unrecognized (stranger) faces.
+        """
+        if reference_encoding is None:
+            return False, len(face_encodings)
+
+        owner_present = False
+        strangers = 0
+
+        for encoding in face_encodings:
+            distance = face_recognition.face_distance(
+                [reference_encoding], encoding)[0]
+            if distance <= distance_threshold:
+                owner_present = True
+            else:
+                strangers += 1
+
+        return owner_present, strangers
+
     def authenticate(self, frame):
         """
-        Compares the main face of the frame against the owner profile.
+        Runs a full biometric analysis of every visible face in the frame.
         Returns:
             bool: True if the authorized owner is recognized.
-            float: Face distance against the profile (lower is closer).
+            int: Number of stranger faces detected.
         """
         if frame is None or self.reference_encoding is None:
-            return False, 1.0
+            return False, 0
 
         # face_recognition expects RGB while OpenCV provides BGR
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         face_encodings = face_recognition.face_encodings(rgb_frame)
 
-        if not face_encodings:
-            return False, 1.0
-
-        distance = face_recognition.face_distance(
-            [self.reference_encoding], face_encodings[0])[0]
-        return bool(distance <= self.distance_threshold), float(distance)
+        return self.classify_faces(
+            face_encodings, self.reference_encoding, self.distance_threshold)
 
     def verify(self, frame):
         """
@@ -97,16 +116,16 @@ class FaceAuthenticator:
         MediaPipe face detection still runs on every frame as a fast gate.
         Returns:
             bool: True if the authorized owner is recognized.
-            float: Face distance of the last full check (lower is closer).
+            int: Number of stranger faces detected.
         """
         if self.reference_encoding is None:
-            return False, 1.0
+            return False, 0
 
-        if self._cached_distance is None or \
+        if self._frames_since_check == 0 or \
                 self._frames_since_check >= self.check_interval:
-            self._cached_result, self._cached_distance = self.authenticate(frame)
-            self._frames_since_check = 0
+            self._cached_result = self.authenticate(frame)
+            self._frames_since_check = 1
         else:
             self._frames_since_check += 1
 
-        return self._cached_result, self._cached_distance
+        return self._cached_result
