@@ -69,9 +69,10 @@ class LockSenseApp:
 
                 # Secure presence requires the OWNER to be recognized,
                 # a bare face or an intruder is treated as an absence.
+                # Recognition is throttled internally to spare CPU cycles.
                 owner_present = False
                 if face_detected:
-                    owner_present, distance = self.auth.authenticate(frame)
+                    owner_present, distance = self.auth.verify(frame)
 
                 if owner_present:
                     # Authorized user in front of the screen: reset security timers

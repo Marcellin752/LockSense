@@ -20,6 +20,12 @@ class FaceAuthenticator:
         self.reference_image_path = "data/reference/owner.jpeg"
         self.distance_threshold = 0.6
 
+        # Performance throttling state
+        self.check_interval = 5
+        self._frames_since_check = 0
+        self._cached_result = False
+        self._cached_distance = 1.0
+
         self.load_config()
 
     def load_config(self):
@@ -33,6 +39,9 @@ class FaceAuthenticator:
                         "reference_image_path", self.reference_image_path)
                     self.distance_threshold = security.get(
                         "face_distance_threshold", self.distance_threshold)
+                    optimizations = config.get("optimizations", {})
+                    self.check_interval = optimizations.get(
+                        "auth_check_interval", self.check_interval)
             except Exception as e:
                 print(f"[Warning] Failed to load config in FaceAuthenticator. Error: {e}")
 
@@ -80,3 +89,24 @@ class FaceAuthenticator:
         distance = face_recognition.face_distance(
             [self.reference_encoding], face_encodings[0])[0]
         return bool(distance <= self.distance_threshold), float(distance)
+
+    def verify(self, frame):
+        """
+        Throttled authentication: runs the expensive recognition only once
+        every 'check_interval' calls and serves the cached verdict in between.
+        MediaPipe face detection still runs on every frame as a fast gate.
+        Returns:
+            bool: True if the authorized owner is recognized.
+            float: Face distance of the last full check (lower is closer).
+        """
+        if self.reference_encoding is None:
+            return False, 1.0
+
+        if self._cached_distance is None or \
+                self._frames_since_check >= self.check_interval:
+            self._cached_result, self._cached_distance = self.authenticate(frame)
+            self._frames_since_check = 0
+        else:
+            self._frames_since_check += 1
+
+        return self._cached_result, self._cached_distance
