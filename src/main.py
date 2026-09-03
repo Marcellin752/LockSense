@@ -15,7 +15,7 @@ from detection.face_detector import FaceDetector
 from auth.face_auth import FaceAuthenticator
 from security.os_trigger import OSTrigger
 from security.input_monitor import InputActivityMonitor
-from logging.logger import setup_logger
+from logger.logger import setup_logger
 
 class LockSenseApp:
     # Minimum delay between two lock commands, so an already-locked session
