@@ -15,5 +15,9 @@
     "tolerance_seconds": 5,
     "reference_image_path": "data/reference/owner.jpeg",
     "face_distance_threshold": 0.75
+  },
+  "logging": {
+    "level": "INFO",
+    "retention_days": 7
   }
 }
