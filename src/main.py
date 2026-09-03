@@ -15,6 +15,7 @@ from detection.face_detector import FaceDetector
 from auth.face_auth import FaceAuthenticator
 from security.os_trigger import OSTrigger
 from security.input_monitor import InputActivityMonitor
+from logging.logger import setup_logger
 
 class LockSenseApp:
     # Minimum delay between two lock commands, so an already-locked session
@@ -28,14 +29,16 @@ class LockSenseApp:
     def __init__(self, config_path="config/settings.json"):
         self.config_path = config_path
 
-        # Core modules
+        self._raw_config = self._load_raw_config()
+        self.logger = setup_logger("locksense.main", self._raw_config)
+        self.logger.info("=== LockSense initializing ===")
+
         self.camera = CameraManager(self.config_path)
         self.detector = FaceDetector(self.config_path)
         self.auth = FaceAuthenticator(self.config_path)
         self.trigger = OSTrigger()
         self.input_monitor = InputActivityMonitor()
 
-        # Security tracking states
         self.tolerance_seconds = 5
         self.last_seen_time = time.time()
         self.is_locked = False
@@ -43,13 +46,23 @@ class LockSenseApp:
         self.last_lock_attempt = 0.0
         self.last_locked_check = 0.0
         self.last_face_detected = False
-
-        # Keyboard/mouse gating (anti-false-positive) settings
         self.gating_mouse_keyboard = True
         self.inactivity_trigger_seconds = 10
         self.draw_face_mesh = False
 
         self.load_config()
+        self.logger.info("Configuration loaded (tolerance=%ds, threshold=%.2f)",
+                         self.tolerance_seconds, self.auth.distance_threshold)
+
+    def _load_raw_config(self):
+        """Loads the raw JSON config dict for logger setup before modules are loaded."""
+        if not os.path.exists(self.config_path):
+            return {}
+        try:
+            with open(self.config_path, 'r') as f:
+                return json.load(f)
+        except Exception:
+            return {}
 
     def load_config(self):
         """Loads runtime configurations from the JSON file."""
@@ -67,18 +80,18 @@ class LockSenseApp:
                     self.draw_face_mesh = optimizations.get(
                         "draw_face_mesh", False)
             except Exception as e:
-                print(f"[Warning] Failed to load config in Main. Error: {e}")
+                self.logger.warning("Failed to load config in Main. Error: %s", e)
 
     def run(self):
         """Main execution loop for LockSense continuous monitoring."""
-        print("\n--- LOCKSENSE: SMART SECURITY ACTIVE ---")
+        self.logger.info("=== LockSense active ===")
         
         if not self.camera.initialize():
-            print("[Critical] Could not start LockSense due to camera initialization failure.")
+            self.logger.critical("Could not start LockSense due to camera initialization failure.")
             return
 
         if not self.auth.load_reference_profile():
-            print("[Critical] Owner profile unavailable: LockSense cannot authenticate users.")
+            self.logger.critical("Owner profile unavailable: LockSense cannot authenticate users.")
             return
 
         # Re-arm the absence timer NOW: camera startup and model loading above
@@ -91,7 +104,7 @@ class LockSenseApp:
                 # Fetch optimized frame from camera manager
                 success, frame = self.camera.get_frame()
                 if not success:
-                    print("[Warning] Failed to grab frame from webcam stream.")
+                    self.logger.warning("Failed to grab frame from webcam stream.")
                     continue
 
                 current_time = time.time()
@@ -102,7 +115,7 @@ class LockSenseApp:
                 if self.is_locked and \
                         current_time - self.last_locked_check < self.IDLE_CHECK_INTERVAL:
                     if cv2.waitKey(1) & 0xFF == ord('q'):
-                        print("[LockSense] Manual exit triggered by user.")
+                        self.logger.info("Manual exit triggered by user.")
                         break
                     time.sleep(0.2)
                     continue
@@ -165,6 +178,7 @@ class LockSenseApp:
                         not self.is_locked and \
                         current_time - self.last_lock_attempt >= self.LOCK_RETRY_COOLDOWN:
                     self.trigger.lock_session()
+                    self.logger.warning("Session locked (owner absent for %ds)", int(absence_duration))
                     self.is_locked = True
                     self.locked_at = current_time
                     self.last_lock_attempt = current_time
@@ -183,19 +197,18 @@ class LockSenseApp:
                 
                 cv2.imshow('LockSense - Security Monitor', frame)
 
-                # Break loop immediately if 'q' key is pressed
+# Break loop immediately if 'q' key is pressed
                 if cv2.waitKey(1) & 0xFF == ord('q'):
-                    print("[LockSense] Manual exit triggered by user.")
+                    self.logger.info("Manual exit triggered by user.")
                     break
 
         except KeyboardInterrupt:
-            print("\n[LockSense] Execution interrupted via terminal (Ctrl+C).")
+            self.logger.info("Execution interrupted via terminal (Ctrl+C).")
         
         finally:
-            # Clean up resources safely on exit
+            self.logger.info("LockSense application exiting")
             self.camera.release()
             self.detector.close()
-            print("--- LOCKSENSE: PROGRAM EXIT ---\n")
 
 if __name__ == "__main__":
     # Initialize and run the application
