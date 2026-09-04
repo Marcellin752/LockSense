@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 ##
-## EPITECH PROJECT, 2026
+## PROJECT, 2026
 ## LockSense
 ## File description:
 ## Enrollment utility: capture the owner reference photo from the webcam

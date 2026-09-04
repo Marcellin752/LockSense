@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 ##
-## EPITECH PROJECT, 2026
+## PROJECT, 2026
 ## LockSense
 ## File description:
 ## Unit tests for the facial authentication and security modules

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 ##
-## EPITECH PROJECT, 2026
+## PROJECT, 2026
 ## LockSense
 ## File description:
 ## Keyboard/mouse activity monitor used as an anti-false-positive gate
